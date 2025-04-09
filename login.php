@@ -1,6 +1,21 @@
 <?php
+// Enable full error reporting
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Start session with strict settings
+session_start([
+    'cookie_secure' => false,
+    'cookie_httponly' => true, 
+    'use_strict_mode' => true
+]);
+
 include 'includes/db_config.php';
-session_start();
+
+// Verify database connection
+if(!$conn) {
+    die("Database connection failed. Please check the database configuration.");
+}
 
 $error = '';
 
@@ -8,55 +23,66 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
     $email = trim($_POST['email']);
     $password = trim($_POST['password']);
 
-    $stmt = $conn->prepare("SELECT id, username, password, role FROM users WHERE email = :email");
-    $stmt->bindValue(':email', $email, SQLITE3_TEXT);
-    $result = $stmt->execute();
-    $user = $result->fetchArray(SQLITE3_ASSOC);
-    
-    if($user){
-        if(password_verify($password, $user['password'])){
-            $_SESSION["loggedin"] = true;
-            $_SESSION["id"] = $user['id'];
-            $_SESSION["username"] = $user['username'];
-            $_SESSION["role"] = $user['role'];
-            
-            if($user['role'] == "buyer"){
-                header("location: buyer_dashboard.php");
-            } elseif($user['role'] == "seller"){
-                header("location: seller_dashboard.php");
-            } elseif($user['role'] == "admin"){
-                header("location: admin_dashboard.php");
+    try {
+        // Prepare and execute query
+        $stmt = $conn->prepare("SELECT id, username, password, role FROM users WHERE email = :email");
+        $stmt->bindValue(':email', $email, SQLITE3_TEXT);
+        $result = $stmt->execute();
+        $user = $result->fetchArray(SQLITE3_ASSOC);
+        
+        if($user) {
+            // Verify password
+            if(password_verify($password, $user['password'])) {
+                // Regenerate session ID
+                session_regenerate_id(true);
+                
+                // Set session variables
+                $_SESSION["loggedin"] = true;
+                $_SESSION["id"] = $user['id'];
+                $_SESSION["username"] = $user['username'];
+                $_SESSION["role"] = $user['role'];
+                
+                // Redirect based on role
+                switch($user['role']) {
+                    case "buyer":
+                        header("location: buyer_dashboard.php");
+                        break;
+                    case "seller":
+                        header("location: seller_dashboard.php");
+                        break;
+                    case "admin":
+                        header("location: admin_dashboard.php");
+                        break;
+                    default:
+                        header("location: index.php");
+                }
+                exit;
+            } else {
+                $error = "Invalid email or password.";
             }
-            exit;
         } else {
             $error = "Invalid email or password.";
         }
-    } else {
-        $error = "Invalid email or password.";
+    } catch (Exception $e) {
+        $error = "An error occurred. Please try again later.";
+        error_log("Login error: " . $e->getMessage());
     }
 }
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Building Materials Marketplace</title>
+    <title>Login</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background-color: #f8f9fa; }
-        .card { margin-top: 50px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        .form-control:focus { border-color: #28a745; box-shadow: 0 0 0 0.25rem rgba(40, 167, 69, 0.25); }
-    </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container mt-5">
         <div class="row justify-content-center">
             <div class="col-md-6">
                 <div class="card">
-                    <div class="card-header bg-success text-white">
-                        <h4 class="mb-0">Login</h4>
+                    <div class="card-header">
+                        <h3>Login</h3>
                     </div>
                     <div class="card-body">
                         <?php if($error): ?>
@@ -64,25 +90,19 @@ if($_SERVER["REQUEST_METHOD"] == "POST") {
                         <?php endif; ?>
                         <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
                             <div class="mb-3">
-                                <label for="email" class="form-label">Email</label>
+                                <label class="form-label">Email</label>
                                 <input type="email" name="email" class="form-control" required>
                             </div>
                             <div class="mb-3">
-                                <label for="password" class="form-label">Password</label>
+                                <label class="form-label">Password</label>
                                 <input type="password" name="password" class="form-control" required>
                             </div>
-                            <div class="d-grid gap-2">
-                                <button type="submit" class="btn btn-success">Login</button>
-                            </div>
+                            <button type="submit" class="btn btn-primary">Login</button>
                         </form>
-                        <div class="mt-3 text-center">
-                            <p>Don't have an account? <a href="signup.php">Sign up here</a></p>
-                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
